@@ -1,0 +1,777 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import Image from 'next/image';
+     5→import { useTheme } from 'next-themes';
+     6→import { AnimatePresence, motion } from 'framer-motion';
+     7→
+     8→import { Input } from '@/components/ui/input';
+     9→import { Button } from '@/components/ui/button';
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    11→import { Badge } from '@/components/ui/badge';
+    12→import { Checkbox } from '@/components/ui/checkbox';
+    13→import {
+    14→  Select,
+    15→  SelectContent,
+    16→  SelectItem,
+    17→  SelectTrigger,
+    18→  SelectValue,
+    19→} from '@/components/ui/select';
+    20→import {
+    21→  ToggleGroup,
+    22→  ToggleGroupItem,
+    23→} from '@/components/ui/toggle-group';
+    24→import {
+    25→  Tooltip,
+    26→  TooltipContent,
+    27→  TooltipProvider,
+    28→  TooltipTrigger,
+    29→} from '@/components/ui/tooltip';
+    30→import {
+    31→  Sheet,
+    32→  SheetContent,
+    33→  SheetHeader,
+    34→  SheetTitle,
+    35→  SheetTrigger,
+    36→} from '@/components/ui/sheet';
+    37→import { Separator } from '@/components/ui/separator';
+    38→import { ScrollArea } from '@/components/ui/scroll-area';
+    39→import { Progress } from '@/components/ui/progress';
+    40→
+    41→import {
+    42→  Search,
+    43→  FileDown,
+    44→  FileText,
+    45→  Sun,
+    46→  Moon,
+    47→  Clock,
+    48→  Trash2,
+    49→  ExternalLink,
+    50→  Check,
+    51→  Loader2,
+    52→  ArrowLeft,
+    53→  History,
+    54→  X,
+    55→  Download,
+    56→  BookOpen,
+    57→} from 'lucide-react';
+    58→
+    59→import { detectLanguage, getLabels } from '@/lib/language';
+    60→import type {
+    61→  ResearchResult,
+    62→  SearchEngine,
+    63→  EngineStatus,
+    64→  ReportLength,
+    65→} from '@/lib/types';
+    66→
+    67→/* ------------------------------------------------------------------ */
+    68→/*  Types for localStorage history                                     */
+    69→/* ------------------------------------------------------------------ */
+    70→interface HistoryItem {
+    71→  id: string;
+    72→  keyword: string;
+    73→  engine: SearchEngine;
+    74→  language: 'en' | 'bn';
+    75→  createdAt: string;
+    76→  reportData: ResearchResult;
+    77→}
+    78→
+    79→const HISTORY_KEY = 'infoquest_history';
+    80→
+    81→function loadHistory(): HistoryItem[] {
+    82→  if (typeof window === 'undefined') return [];
+    83→  try {
+    84→    const raw = localStorage.getItem(HISTORY_KEY);
+    85→    return raw ? JSON.parse(raw) : [];
+    86→  } catch {
+    87→    return [];
+    88→  }
+    89→}
+    90→
+    91→function saveHistory(items: HistoryItem[]) {
+    92→  if (typeof window === 'undefined') return;
+    93→  try {
+    94→    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 50)));
+    95→  } catch {
+    96→    /* quota exceeded — silently fail */
+    97→  }
+    98→}
+    99→
+   100→/* ------------------------------------------------------------------ */
+   101→/*  Progress steps                                                     */
+   102→/* ------------------------------------------------------------------ */
+   103→const PROGRESS_STEPS = [
+   104→  'progressSearching',
+   105→  'progressGathering',
+   106→  'progressFormatting',
+   107→  'progressDone',
+   108→] as const;
+   109→
+   110→/* ------------------------------------------------------------------ */
+   111→/*  Component                                                          */
+   112→/* ------------------------------------------------------------------ */
+   113→export default function Home() {
+   114→  const { theme, setTheme } = useTheme();
+   115→  const [mounted, setMounted] = useState(false);
+   116→
+   117→  // State
+   118→  const [keyword, setKeyword] = useState('');
+   119→  const [engine, setEngine] = useState<SearchEngine>('web');
+   120→  const [combineWithAI, setCombineWithAI] = useState(false);
+   121→  const [reportLength, setReportLength] = useState<ReportLength>('detailed');
+   122→  const [engines, setEngines] = useState<EngineStatus[]>([]);
+   123→
+   124→  const [loading, setLoading] = useState(false);
+   125→  const [progressStep, setProgressStep] = useState(0);
+   126→  const [result, setResult] = useState<ResearchResult | null>(null);
+   127→  const [error, setError] = useState('');
+   128→
+   129→  // History
+   130→  const [history, setHistory] = useState<HistoryItem[]>([]);
+   131→  const [historyOpen, setHistoryOpen] = useState(false);
+   132→
+   133→  // Detected language for labels
+   134→  const detectedLang = keyword ? detectLanguage(keyword) : 'en';
+   135→  const t = getLabels(detectedLang);
+   136→
+   137→  /* ---- bootstrap ---- */
+   138→  useEffect(() => {
+   139→    setMounted(true);
+   140→    fetch('/api/engines')
+   141→      .then((r) => r.json())
+   142→      .then(setEngines)
+   143→      .catch(() => {});
+   144→    setHistory(loadHistory());
+   145→  }, []);
+   146→
+   147→  /* ---- progress simulation while API is running ---- */
+   148→  useEffect(() => {
+   149→    if (!loading) return;
+   150→    const timers = [
+   151→      setTimeout(() => setProgressStep(1), 1500),
+   152→      setTimeout(() => setProgressStep(2), 4000),
+   153→      setTimeout(() => setProgressStep(3), 6500),
+   154→    ];
+   155→    return () => timers.forEach(clearTimeout);
+   156→  }, [loading]);
+   157→
+   158→  /* ---- handle search ---- */
+   159→  const handleSearch = useCallback(async () => {
+   160→    if (!keyword.trim()) return;
+   161→    setLoading(true);
+   162→    setProgressStep(0);
+   163→    setError('');
+   164→    setResult(null);
+   165→
+   166→    try {
+   167→      const res = await fetch('/api/research', {
+   168→        method: 'POST',
+   169→        headers: { 'Content-Type': 'application/json' },
+   170→        body: JSON.stringify({
+   171→          keyword: keyword.trim(),
+   172→          engine,
+   173→          combineWithAI,
+   174→          reportLength,
+   175→        }),
+   176→      });
+   177→      const data = await res.json();
+   178→      if (!res.ok) throw new Error(data.error || 'Research failed');
+   179→
+   180→      setProgressStep(3);
+   181→      setResult(data);
+   182→
+   183→      // Save to localStorage history
+   184→      const newItem: HistoryItem = {
+   185→        id: crypto.randomUUID(),
+   186→        keyword: data.keyword,
+   187→        engine: data.engine,
+   188→        language: data.language,
+   189→        createdAt: data.timestamp,
+   190→        reportData: data,
+   191→      };
+   192→      const updated = [newItem, ...loadHistory()].slice(0, 50);
+   193→      saveHistory(updated);
+   194→      setHistory(updated);
+   195→    } catch (err: any) {
+   196→      setError(err.message || 'Something went wrong');
+   197→    } finally {
+   198→      setLoading(false);
+   199→    }
+   200→  }, [keyword, engine, combineWithAI, reportLength]);
+   201→
+   202→  /* ---- downloads ---- */
+   203→  const downloadReport = useCallback(
+   204→    async (format: 'pdf' | 'docx', data?: ResearchResult) => {
+   205→      const payload = data || result;
+   206→      if (!payload) return;
+   207→
+   208→      try {
+   209→        const res = await fetch(`/api/download/${format}`, {
+   210→          method: 'POST',
+   211→          headers: { 'Content-Type': 'application/json' },
+   212→          body: JSON.stringify(payload),
+   213→        });
+   214→        if (!res.ok) throw new Error('Download failed');
+   215→        const blob = await res.blob();
+   216→        const url = URL.createObjectURL(blob);
+   217→        const a = document.createElement('a');
+   218→        a.href = url;
+   219→        a.download = `infoquest-${encodeURIComponent(payload.keyword)}.${format}`;
+   220→        document.body.appendChild(a);
+   221→        a.click();
+   222→        a.remove();
+   223→        URL.revokeObjectURL(url);
+   224→      } catch (err: any) {
+   225→        setError(err.message);
+   226→      }
+   227→    },
+   228→    [result]
+   229→  );
+   230→
+   231→  /* ---- history helpers ---- */
+   232→  const deleteHistoryItem = (id: string) => {
+   233→    const updated = history.filter((h) => h.id !== id);
+   234→    saveHistory(updated);
+   235→    setHistory(updated);
+   236→  };
+   237→
+   238→  const clearHistory = () => {
+   239→    saveHistory([]);
+   240→    setHistory([]);
+   241→  };
+   242→
+   243→  const viewHistoryItem = (item: HistoryItem) => {
+   244→    setResult(item.reportData);
+   245→    setHistoryOpen(false);
+   246→  };
+   247→
+   248→  const engineName = (id: SearchEngine) => {
+   249→    const e = engines.find((e) => e.id === id);
+   250→    return e?.name || id;
+   251→  };
+   252→
+   253→  const isAI = engine !== 'web';
+   254→  const lang = result?.language || detectedLang;
+   255→  const lt = getLabels(lang);
+   256→
+   257→  /* ================================================================ */
+   258→  /*  RENDER                                                           */
+   259→  /* ================================================================ */
+   260→  if (!mounted) return null;
+   261→
+   262→  return (
+   263→    <TooltipProvider delayDuration={200}>
+   264→      <div className="min-h-screen flex flex-col bg-paper-texture">
+   265→        {/* ==================== HEADER ==================== */}
+   266→        <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
+   267→          <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 h-14">
+   268→            <div className="flex items-center gap-3">
+   269→              <Image
+   270→                src="/logo.png"
+   271→                alt="InfoQuest"
+   272→                width={34}
+   273→                height={34}
+   274→                className="rounded"
+   275→              />
+   276→              <div className="leading-tight">
+   277→                <span className="font-display font-bold text-lg text-foreground">
+   278→                  InfoQuest
+   279→                </span>{' '}
+   280→                <span className="text-xs italic text-gold font-medium">
+   281→                  by Arup
+   282→                </span>
+   283→              </div>
+   284→            </div>
+   285→
+   286→            <div className="flex items-center gap-2">
+   287→              {/* History button */}
+   288→              <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+   289→                <SheetTrigger asChild>
+   290→                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+   291→                    <History className="h-5 w-5" />
+   292→                  </Button>
+   293→                </SheetTrigger>
+   294→                <SheetContent className="w-[360px] sm:w-[420px] bg-background border-border">
+   295→                  <SheetHeader>
+   296→                    <SheetTitle className="font-display text-foreground">{lt.history}</SheetTitle>
+   297→                  </SheetHeader>
+   298→                  <div className="mt-6 flex flex-col gap-2">
+   299→                    {history.length === 0 && (
+   300→                      <p className="text-muted-foreground text-sm text-center py-12">{lt.noHistory}</p>
+   301→                    )}
+   302→                    <ScrollArea className="max-h-[calc(100vh-180px)] scrollbar-thin">
+   303→                      <div className="flex flex-col gap-2 pr-3">
+   304→                        {history.map((item) => (
+   305→                          <Card
+   306→                            key={item.id}
+   307→                            className="bg-card border-border hover:border-gold/50 transition-colors"
+   308→                          >
+   309→                            <CardContent className="p-3 flex flex-col gap-2">
+   310→                              <div className="flex items-start justify-between gap-2">
+   311→                                <div className="min-w-0 flex-1">
+   312→                                  <p
+   313→                                    className={`font-medium text-sm truncate ${
+   314→                                      item.language === 'bn' ? 'font-bengali' : ''
+   315→                                    }`}
+   316→                                  >
+   317→                                    {item.keyword}
+   318→                                  </p>
+   319→                                  <div className="flex items-center gap-2 mt-1">
+   320→                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-gold/40 text-gold">
+   321→                                      {engineName(item.engine)}
+   322→                                    </Badge>
+   323→                                    <span className="text-[10px] text-muted-foreground">
+   324→                                      {new Date(item.createdAt).toLocaleDateString()}
+   325→                                    </span>
+   326→                                  </div>
+   327→                                </div>
+   328→                                <div className="flex items-center gap-1 shrink-0">
+   329→                                  <Button
+   330→                                    variant="ghost"
+   331→                                    size="icon"
+   332→                                    className="h-7 w-7"
+   333→                                    onClick={() => viewHistoryItem(item)}
+   334→                                  >
+   335→                                    <BookOpen className="h-3.5 w-3.5" />
+   336→                                  </Button>
+   337→                                  <Button
+   338→                                    variant="ghost"
+   339→                                    size="icon"
+   340→                                    className="h-7 w-7"
+   341→                                    onClick={() => downloadReport('pdf', item.reportData)}
+   342→                                  >
+   343→                                    <Download className="h-3.5 w-3.5" />
+   344→                                  </Button>
+   345→                                  <Button
+   346→                                    variant="ghost"
+   347→                                    size="icon"
+   348→                                    className="h-7 w-7 text-destructive hover:text-destructive"
+   349→                                    onClick={() => deleteHistoryItem(item.id)}
+   350→                                  >
+   351→                                    <Trash2 className="h-3.5 w-3.5" />
+   352→                                  </Button>
+   353→                                </div>
+   354→                              </div>
+   355→                            </CardContent>
+   356→                          </Card>
+   357→                        ))}
+   358→                      </div>
+   359→                    </ScrollArea>
+   360→                    {history.length > 0 && (
+   361→                      <Button
+   362→                        variant="outline"
+   363→                        size="sm"
+   364→                        className="mt-3 text-destructive border-destructive/30 hover:bg-destructive/10"
+   365→                        onClick={clearHistory}
+   366→                      >
+   367→                        <Trash2 className="h-4 w-4 mr-2" />
+   368→                        {lt.clearHistory}
+   369→                      </Button>
+   370→                    )}
+   371→                  </div>
+   372→                </SheetContent>
+   373→              </Sheet>
+   374→
+   375→              {/* Theme toggle */}
+   376→              <Button
+   377→                variant="ghost"
+   378→                size="icon"
+   379→                className="text-muted-foreground hover:text-foreground"
+   380→                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+   381→              >
+   382→                {theme === 'dark' ? (
+   383→                  <Sun className="h-5 w-5" />
+   384→                ) : (
+   385→                  <Moon className="h-5 w-5" />
+   386→                )}
+   387→              </Button>
+   388→            </div>
+   389→          </div>
+   390→        </header>
+   391→
+   392→        {/* ==================== MAIN ==================== */}
+   393→        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8">
+   394→          <AnimatePresence mode="wait">
+   395→            {/* ---------- HERO / SEARCH ---------- */}
+   396→            {!result && !loading && (
+   397→              <motion.div
+   398→                key="hero"
+   399→                initial={{ opacity: 0, y: 20 }}
+   400→                animate={{ opacity: 1, y: 0 }}
+   401→                exit={{ opacity: 0, y: -20 }}
+   402→                className="flex flex-col items-center justify-center min-h-[70vh]"
+   403→              >
+   404→                {/* Logo + tagline */}
+   405→                <div className="mb-8 flex flex-col items-center gap-3">
+   406→                  <div className="animate-magnify-pulse text-gold">
+   407→                    <Search className="h-16 w-16" strokeWidth={1.5} />
+   408→                  </div>
+   409→                  <h1 className="font-display text-3xl sm:text-4xl font-bold text-foreground text-center">
+   410→                    Discover. Research. Report.
+   411→                  </h1>
+   412→                  <p className="text-muted-foreground text-sm sm:text-base text-center max-w-md">
+   413→                    {detectedLang === 'bn'
+   414→                      ? 'যেকোনো বিষয় অনুসন্ধান করুন এবং সুন্দর রিপোর্ট তৈরি করুন'
+   415→                      : 'Search any topic in Bengali or English, get a beautifully formatted report'}
+   416→                  </p>
+   417→                </div>
+   418→
+   419→                {/* Search bar */}
+   420→                <div className="w-full max-w-2xl space-y-3">
+   421→                  <div className="flex gap-2">
+   422→                    <div className="relative flex-1">
+   423→                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   424→                      <Input
+   425→                        value={keyword}
+   426→                        onChange={(e) => setKeyword(e.target.value)}
+   427→                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+   428→                        placeholder={t.searchPlaceholder}
+   429→                        className={`pl-10 h-12 text-base bg-card border-border focus:border-gold focus:ring-gold/30 ${
+   430→                          detectedLang === 'bn' ? 'font-bengali' : ''
+   431→                        }`}
+   432→                      />
+   433→                    </div>
+   434→                    <Select
+   435→                      value={engine}
+   436→                      onValueChange={(v) => setEngine(v as SearchEngine)}
+   437→                    >
+   438→                      <SelectTrigger className="w-[150px] h-12 bg-card border-border">
+   439→                        <SelectValue />
+   440→                      </SelectTrigger>
+   441→                      <SelectContent>
+   442→                        {engines.map((eng) =>
+   443→                          eng.available ? (
+   444→                            <SelectItem key={eng.id} value={eng.id}>
+   445→                              <span className="flex items-center gap-2">
+   446→                                <span>{eng.icon}</span>
+   447→                                <span>{eng.name}</span>
+   448→                              </span>
+   449→                            </SelectItem>
+   450→                          ) : (
+   451→                            <Tooltip key={eng.id}>
+   452→                              <TooltipTrigger asChild>
+   453→                                <div className="px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
+   454→                                  <span className="flex items-center gap-2">
+   455→                                    <span>{eng.icon}</span>
+   456→                                    <span>{eng.name}</span>
+   457→                                    <X className="h-3 w-3 ml-auto" />
+   458→                                  </span>
+   459→                                </div>
+   460→                              </TooltipTrigger>
+   461→                              <TooltipContent>{eng.reason}</TooltipContent>
+   462→                            </Tooltip>
+   463→                          )
+   464→                        )}
+   465→                      </SelectContent>
+   466→                    </Select>
+   467→                  </div>
+   468→
+   469→                  {/* Options row */}
+   470→                  <div className="flex flex-wrap items-center gap-4">
+   471→                    {/* Combine checkbox (only for AI engines) */}
+   472→                    {isAI && (
+   473→                      <label className="flex items-center gap-2 cursor-pointer select-none">
+   474→                        <Checkbox
+   475→                          checked={combineWithAI}
+   476→                          onCheckedChange={(v) => setCombineWithAI(!!v)}
+   477→                          className="border-gold data-[state=checked]:bg-gold data-[state=checked]:border-gold"
+   478→                        />
+   479→                        <span className="text-sm text-foreground">{t.combineLabel}</span>
+   480→                      </label>
+   481→                    )}
+   482→
+   483→                    {/* Report length */}
+   484→                    <ToggleGroup
+   485→                      type="single"
+   486→                      value={reportLength}
+   487→                      onValueChange={(v) => v && setReportLength(v as ReportLength)}
+   488→                      className="border border-border rounded-lg"
+   489→                    >
+   490→                      <ToggleGroupItem
+   491→                        value="brief"
+   492→                        className="text-xs data-[state=on]:bg-gold/15 data-[state=on]:text-gold"
+   493→                      >
+   494→                        {t.brief}
+   495→                      </ToggleGroupItem>
+   496→                      <ToggleGroupItem
+   497→                        value="detailed"
+   498→                        className="text-xs data-[state=on]:bg-gold/15 data-[state=on]:text-gold"
+   499→                      >
+   500→                        {t.detailed}
+   501→                      </ToggleGroupItem>
+   502→                    </ToggleGroup>
+   503→
+   504→                    {/* Spacer */}
+   505→                    <div className="flex-1" />
+   506→
+   507→                    {/* Search button */}
+   508→                    <Button
+   509→                      onClick={handleSearch}
+   510→                      disabled={!keyword.trim()}
+   511→                      className="h-10 px-6 bg-navy hover:bg-navy-light text-gold font-semibold rounded-lg transition-colors"
+   512→                    >
+   513→                      <Search className="h-4 w-4 mr-2" />
+   514→                      {t.search}
+   515→                    </Button>
+   516→                  </div>
+   517→                </div>
+   518→              </motion.div>
+   519→            )}
+   520→
+   521→            {/* ---------- PROGRESS ---------- */}
+   522→            {loading && (
+   523→              <motion.div
+   524→                key="progress"
+   525→                initial={{ opacity: 0, y: 20 }}
+   526→                animate={{ opacity: 1, y: 0 }}
+   527→                exit={{ opacity: 0, y: -20 }}
+   528→                className="flex flex-col items-center justify-center min-h-[70vh]"
+   529→              >
+   530→                <Card className="w-full max-w-md bg-card border-border">
+   531→                  <CardContent className="p-8 flex flex-col items-center gap-6">
+   532→                    <div className="animate-magnify-pulse text-gold">
+   533→                      {progressStep < 3 ? (
+   534→                        <Loader2 className="h-12 w-12 animate-spin" />
+   535→                      ) : (
+   536→                        <Check className="h-12 w-12" />
+   537→                      )}
+   538→                    </div>
+   539→
+   540→                    <div className="w-full space-y-3">
+   541→                      <Progress
+   542→                        value={((progressStep + 1) / PROGRESS_STEPS.length) * 100}
+   543→                        className="h-2"
+   544→                      />
+   545→                      <div className="space-y-2">
+   546→                        {PROGRESS_STEPS.map((stepKey, i) => (
+   547→                          <div
+   548→                            key={stepKey}
+   549→                            className={`flex items-center gap-2 text-sm transition-all duration-300 ${
+   550→                              i <= progressStep
+   551→                                ? 'text-foreground'
+   552→                                : 'text-muted-foreground'
+   553→                            }`}
+   554→                          >
+   555→                            {i < progressStep ? (
+   556→                              <Check className="h-4 w-4 text-gold shrink-0" />
+   557→                            ) : i === progressStep ? (
+   558→                              <Loader2 className="h-4 w-4 text-gold animate-spin shrink-0" />
+   559→                            ) : (
+   560→                              <div className="h-4 w-4 rounded-full border border-border shrink-0" />
+   561→                            )}
+   562→                            <span
+   563→                              className={
+   564→                                i <= progressStep ? 'font-medium' : ''
+   565→                              }
+   566→                            >
+   567→                              {i === 0 && engine !== 'web'
+   568→                                ? `Researching with ${engineName(engine)}…`
+   569→                                : (lt as any)[stepKey]}
+   570→                            </span>
+   571→                          </div>
+   572→                        ))}
+   573→                      </div>
+   574→                    </div>
+   575→                  </CardContent>
+   576→                </Card>
+   577→              </motion.div>
+   578→            )}
+   579→
+   580→            {/* ---------- ERROR ---------- */}
+   581→            {error && !loading && (
+   582→              <motion.div
+   583→                key="error"
+   584→                initial={{ opacity: 0 }}
+   585→                animate={{ opacity: 1 }}
+   586→                className="max-w-2xl mx-auto mt-8"
+   587→              >
+   588→                <Card className="border-destructive/30 bg-destructive/5">
+   589→                  <CardContent className="p-6 text-center">
+   590→                    <p className="text-destructive font-medium">{error}</p>
+   591→                    <Button
+   592→                      variant="outline"
+   593→                      className="mt-4"
+   594→                      onClick={() => { setError(''); setResult(null); }}
+   595→                    >
+   596→                      {lt.backToSearch}
+   597→                    </Button>
+   598→                  </CardContent>
+   599→                </Card>
+   600→              </motion.div>
+   601→            )}
+   602→
+   603→            {/* ---------- RESULTS ---------- */}
+   604→            {result && !loading && (
+   605→              <motion.div
+   606→                key="results"
+   607→                initial={{ opacity: 0, y: 20 }}
+   608→                animate={{ opacity: 1, y: 0 }}
+   609→                className="animate-fade-in-up space-y-6"
+   610→              >
+   611→                {/* Top bar */}
+   612→                <div className="flex flex-wrap items-center justify-between gap-3">
+   613→                  <div className="flex flex-wrap items-center gap-2">
+   614→                    <Button
+   615→                      variant="ghost"
+   616→                      size="sm"
+   617→                      onClick={() => { setResult(null); setKeyword(''); }}
+   618→                      className="text-muted-foreground hover:text-foreground"
+   619→                    >
+   620→                      <ArrowLeft className="h-4 w-4 mr-1" />
+   621→                      {lt.backToSearch}
+   622→                    </Button>
+   623→                    <Separator orientation="vertical" className="h-5" />
+   624→                    <h2
+   625→                      className={`text-lg font-display font-bold text-foreground ${
+   626→                        lang === 'bn' ? 'font-bengali' : ''
+   627→                      }`}
+   628→                    >
+   629→                      {result.keyword}
+   630→                    </h2>
+   631→                    <Badge className="bg-navy text-gold text-xs border-0 font-medium">
+   632→                      {lt.coverEngine} {engineName(result.engine)}
+   633→                    </Badge>
+   634→                  </div>
+   635→                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   636→                    <Clock className="h-3.5 w-3.5" />
+   637→                    {new Date(result.timestamp).toLocaleString(
+   638→                      lang === 'bn' ? 'bn-BD' : 'en-US'
+   639→                    )}
+   640→                  </div>
+   641→                </div>
+   642→
+   643→                {/* Two-column results */}
+   644→                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   645→                  {/* Section 1: Information */}
+   646→                  <Card className="bg-card border-border overflow-hidden">
+   647→                    <CardHeader className="pb-3">
+   648→                      <div className="flex items-center gap-2">
+   649→                        <div className="h-1 w-8 rounded bg-gold" />
+   650→                        <CardTitle
+   651→                          className={`text-xl font-display font-bold text-navy ${
+   652→                            lang === 'bn' ? 'font-bengali-serif' : ''
+   653→                          }`}
+   654→                        >
+   655→                          {lt.sectionInfo}
+   656→                        </CardTitle>
+   657→                      </div>
+   658→                    </CardHeader>
+   659→                    <CardContent>
+   660→                      <ScrollArea className="max-h-[60vh] scrollbar-thin">
+   661→                        <div
+   662→                          className={`prose prose-sm max-w-none text-charcoal leading-relaxed whitespace-pre-wrap ${
+   663→                            lang === 'bn' ? 'font-bengali' : ''
+   664→                          }`}
+   665→                        >
+   666→                          {result.information}
+   667→                        </div>
+   668→                      </ScrollArea>
+   669→                    </CardContent>
+   670→                  </Card>
+   671→
+   672→                  {/* Section 2: News */}
+   673→                  <Card className="bg-card border-border overflow-hidden">
+   674→                    <CardHeader className="pb-3">
+   675→                      <div className="flex items-center gap-2">
+   676→                        <div className="h-1 w-8 rounded bg-gold" />
+   677→                        <CardTitle
+   678→                          className={`text-xl font-display font-bold text-navy ${
+   679→                            lang === 'bn' ? 'font-bengali-serif' : ''
+   680→                          }`}
+   681→                        >
+   682→                          {lt.sectionNews}
+   683→                        </CardTitle>
+   684→                      </div>
+   685→                    </CardHeader>
+   686→                    <CardContent>
+   687→                      <ScrollArea className="max-h-[60vh] scrollbar-thin">
+   688→                        {result.newsItems.length === 0 ? (
+   689→                          <p className="text-muted-foreground text-sm py-8 text-center">
+   690→                            {lt.newsPlaceholder}
+   691→                          </p>
+   692→                        ) : (
+   693→                          <ol className="space-y-4">
+   694→                            {result.newsItems.map((item, i) => (
+   695→                              <li
+   696→                                key={i}
+   697→                                className="group relative pl-7 border-l-2 border-gold/20 hover:border-gold/60 transition-colors"
+   698→                              >
+   699→                                <span className="absolute -left-[13px] top-0 flex h-5 w-5 items-center justify-center rounded-full bg-gold/15 text-gold text-[10px] font-bold">
+   700→                                  {i + 1}
+   701→                                </span>
+   702→                                <div className="space-y-1">
+   703→                                  {item.link ? (
+   704→                                    <a
+   705→                                      href={item.link}
+   706→                                      target="_blank"
+   707→                                      rel="noopener noreferrer"
+   708→                                      className={`font-semibold text-sm text-foreground hover:text-gold transition-colors flex items-start gap-1 ${
+   709→                                        lang === 'bn' ? 'font-bengali' : ''
+   710→                                      }`}
+   711→                                    >
+   712→                                      <span className="min-w-0 flex-1">{item.title}</span>
+   713→                                      <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+   714→                                    </a>
+   715→                                  ) : (
+   716→                                    <p
+   717→                                      className={`font-semibold text-sm text-foreground ${
+   718→                                        lang === 'bn' ? 'font-bengali' : ''
+   719→                                      }`}
+   720→                                    >
+   721→                                      {item.title}
+   722→                                    </p>
+   723→                                  )}
+   724→                                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+   725→                                    <span>{lt.sourceLabel}: {item.source}</span>
+   726→                                    <span>•</span>
+   727→                                    <span>{lt.dateLabel}: {item.date}</span>
+   728→                                  </div>
+   729→                                  <p
+   730→                                    className={`text-sm text-charcoal/80 leading-relaxed ${
+   731→                                      lang === 'bn' ? 'font-bengali' : ''
+   732→                                    }`}
+   733→                                  >
+   734→                                    {item.summary}
+   735→                                  </p>
+   736→                                </div>
+   737→                              </li>
+   738→                            ))}
+   739→                          </ol>
+   740→                        )}
+   741→                      </ScrollArea>
+   742→                    </CardContent>
+   743→                  </Card>
+   744→                </div>
+   745→
+   746→                {/* Download bar */}
+   747→                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+   748→                  <Button
+   749→                    onClick={() => downloadReport('pdf')}
+   750→                    className="bg-navy hover:bg-navy-light text-gold font-semibold px-6"
+   751→                  >
+   752→                    <FileDown className="h-4 w-4 mr-2" />
+   753→                    {lt.downloadPdf}
+   754→                  </Button>
+   755→                  <Button
+   756→                    variant="outline"
+   757→                    onClick={() => downloadReport('docx')}
+   758→                    className="border-border hover:border-gold/50 hover:text-gold font-semibold px-6"
+   759→                  >
+   760→                    <FileText className="h-4 w-4 mr-2" />
+   761→                    {lt.downloadDocx}
+   762→                  </Button>
+   763→                </div>
+   764→              </motion.div>
+   765→            )}
+   766→          </AnimatePresence>
+   767→        </main>
+   768→
+   769→        {/* ==================== FOOTER ==================== */}
+   770→        <footer className="mt-auto border-t border-border py-4 text-center">
+   771→          <p className="text-xs text-muted-foreground">{lt.footerText}</p>
+   772→        </footer>
+   773→      </div>
+   774→    </TooltipProvider>
+   775→  );
+   776→}
+   777→
