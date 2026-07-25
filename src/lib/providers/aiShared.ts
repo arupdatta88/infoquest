@@ -7,7 +7,7 @@ export function buildResearchPrompt(params: {
 }): string {
   const { keyword, language, length } = params;
   const langName = language === "bn" ? "Bengali (Bangla)" : "English";
-  const wordCount = length === "detailed" ? "500-800" : "150-300";
+  const wordCount = length === "detailed" ? "120-200" : "40-70";
 
   return `You are a research assistant. Research the keyword/topic: "${keyword}".
 
@@ -15,7 +15,7 @@ Respond in ${langName}.
 
 Return ONLY a single JSON object (no markdown fences, no commentary before or after) with this exact shape:
 {
-  "information": "a well-organized informational summary (${wordCount} words) covering background, key facts, and relevant context, written in ${langName} as plain paragraphs separated by a blank line",
+  "information": "a short, direct summary (${wordCount} words) of the keyword/topic itself — its core meaning, key facts, and most relevant current context. Write it as a standalone summary of the topic, not as a description of what was searched or found. Written in ${langName} as plain paragraphs separated by a blank line",
   "newsItems": [
     {
       "title": "headline of a recent, relevant news item",

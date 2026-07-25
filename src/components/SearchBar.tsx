@@ -55,7 +55,7 @@ export default function SearchBar({
         <button
           type="submit"
           disabled={loading || !value.trim()}
-          className="m-1.5 shrink-0 rounded-xl bg-navy dark:bg-gold px-5 py-3 text-sm font-semibold text-parchment dark:text-navy transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
+          className="glossy m-1.5 shrink-0 rounded-xl bg-navy dark:bg-gold px-5 py-3 text-sm font-semibold text-parchment dark:text-navy transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
         >
           {buttonLabel}
         </button>

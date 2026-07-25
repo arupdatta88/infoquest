@@ -101,33 +101,43 @@ async function newsApiRequest(
   }));
 }
 
+/**
+ * Builds a short, keyword-focused summary (not a list of what the search turned up).
+ * Prefers a knowledge-graph description or answer box — these already read like a
+ * concise, standalone summary of the topic — and falls back to condensing the top
+ * organic snippets into one short paragraph, capped to a small word budget.
+ */
 function buildInformationFromOrganic(organic: any, keyword: string, length: "brief" | "detailed"): string {
   const answerBox = organic?.answerBox?.answer || organic?.answerBox?.snippet;
   const knowledgeGraph = organic?.knowledgeGraph;
   const results: any[] = organic?.organic ?? [];
 
-  const paragraphs: string[] = [];
+  const maxWords = length === "detailed" ? 130 : 60;
 
+  let summary = "";
   if (knowledgeGraph?.description) {
-    paragraphs.push(knowledgeGraph.description);
+    summary = String(knowledgeGraph.description);
   } else if (answerBox) {
-    paragraphs.push(String(answerBox));
+    summary = String(answerBox);
+  } else {
+    const take = length === "detailed" ? results.slice(0, 3) : results.slice(0, 2);
+    summary = take
+      .map((r) => r.snippet)
+      .filter(Boolean)
+      .join(" ");
   }
 
-  const take = length === "detailed" ? results.slice(0, 8) : results.slice(0, 4);
-  for (const r of take) {
-    if (r.snippet) {
-      paragraphs.push(`${r.title ? r.title + " — " : ""}${r.snippet}`);
-    }
+  if (!summary.trim()) {
+    return `No concise summary could be found for "${keyword}".`;
   }
 
-  if (paragraphs.length === 0) {
-    paragraphs.push(
-      `No general summary could be assembled for "${keyword}" from the available web results.`
-    );
-  }
+  return truncateToWords(summary.trim(), maxWords);
+}
 
-  return paragraphs.join("\n\n");
+function truncateToWords(text: string, maxWords: number): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return text;
+  return words.slice(0, maxWords).join(" ").replace(/[,;:.\-–]*$/, "") + "…";
 }
 
 function dateRangeToTbs(range: "any" | "24h" | "week" | "month" | "year"): string | undefined {

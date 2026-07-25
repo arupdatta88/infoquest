@@ -2,6 +2,7 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
+  ExternalHyperlink,
   Footer,
   HeadingLevel,
   Packer,
@@ -11,15 +12,16 @@ import {
   TableCell,
   TableRow,
   TextRun,
+  VerticalAlign,
   WidthType
 } from "docx";
 import { ResearchResult } from "./types";
-import { UI_STRINGS } from "./language";
+import { UI_STRINGS, UiStrings } from "./language";
 
-const NAVY = "1B2A4A";
-const GOLD = "D9A441";
-const CHARCOAL = "2B2B2B";
-const MUTED = "6B6F7A";
+const NAVY = "063D2E";
+const GOLD = "22A174";
+const CHARCOAL = "202E28";
+const MUTED = "5F766C";
 
 export async function generateDocxReport(result: ResearchResult): Promise<Buffer> {
   const isBengali = result.language === "bn";
@@ -86,7 +88,7 @@ export async function generateDocxReport(result: ResearchResult): Promise<Buffer
   ];
 
   const infoParagraphs = [
-    sectionHeading(t.whatWeFound, headingFontName),
+    sectionHeading(t.keywordSummary, headingFontName),
     ...result.information
       .split(/\n\s*\n/)
       .filter((p) => p.trim())
@@ -110,43 +112,7 @@ export async function generateDocxReport(result: ResearchResult): Promise<Buffer
             children: [new TextRun({ text: t.noResults, size: 22, color: MUTED, font: bodyFontName })]
           })
         ]
-      : result.newsItems.flatMap((item, idx) => {
-          const metaBits = [item.source, formatDate(item.date, result.language)].filter(Boolean).join("  •  ");
-          const paras: Paragraph[] = [
-            new Paragraph({
-              spacing: { before: 260, after: 40 },
-              children: [
-                new TextRun({ text: `${idx + 1}. `, bold: true, color: NAVY, size: 24, font: bodyFontName }),
-                new TextRun({ text: item.title || "(untitled)", bold: true, color: NAVY, size: 24, font: bodyFontName })
-              ]
-            })
-          ];
-          if (metaBits) {
-            paras.push(
-              new Paragraph({
-                spacing: { after: 60 },
-                children: [new TextRun({ text: metaBits, italics: true, color: GOLD, size: 19, font: bodyFontName })]
-              })
-            );
-          }
-          if (item.summary) {
-            paras.push(
-              new Paragraph({
-                spacing: { after: 60 },
-                children: [new TextRun({ text: item.summary, color: CHARCOAL, size: 21, font: bodyFontName })]
-              })
-            );
-          }
-          if (item.link) {
-            paras.push(
-              new Paragraph({
-                spacing: { after: 60 },
-                children: [new TextRun({ text: item.link, color: "3A5C99", size: 19, font: bodyFontName })]
-              })
-            );
-          }
-          return paras;
-        }))
+      : [buildNewsTable(result, t, bodyFontName)])
   ];
 
   const doc = new Document({
@@ -174,6 +140,117 @@ export async function generateDocxReport(result: ResearchResult): Promise<Buffer
   });
 
   return Packer.toBuffer(doc);
+}
+
+/** Builds the Latest News table: Serial | News Title | Brief Description | Full News Link. */
+function buildNewsTable(result: ResearchResult, t: UiStrings, bodyFontName: string): Table {
+  const headerRow = new TableRow({
+    tableHeader: true,
+    children: [
+      headerCell(t.serialLabel, bodyFontName, 8),
+      headerCell(t.newsTitleLabel, bodyFontName, 22),
+      headerCell(t.briefDescriptionLabel, bodyFontName, 45),
+      headerCell(t.fullNewsLinkLabel, bodyFontName, 25)
+    ]
+  });
+
+  const bodyRows = result.newsItems.map((item, idx) => {
+    const dateStr = formatDate(item.date, result.language);
+    const title = item.title || "(untitled)";
+    const metaBits = [item.source, dateStr].filter(Boolean).join("  •  ");
+
+    return new TableRow({
+      children: [
+        bodyCell(
+          [new Paragraph({ children: [new TextRun({ text: String(idx + 1), color: CHARCOAL, size: 20, font: bodyFontName })] })],
+          bodyFontName
+        ),
+        bodyCell(
+          [
+            new Paragraph({
+              children: [new TextRun({ text: title, bold: true, color: NAVY, size: 20, font: bodyFontName })]
+            }),
+            ...(metaBits
+              ? [
+                  new Paragraph({
+                    children: [new TextRun({ text: metaBits, italics: true, color: GOLD, size: 16, font: bodyFontName })]
+                  })
+                ]
+              : [])
+          ],
+          bodyFontName
+        ),
+        bodyCell(
+          [
+            new Paragraph({
+              children: [
+                new TextRun({ text: item.summary || "—", color: CHARCOAL, size: 20, font: bodyFontName })
+              ]
+            })
+          ],
+          bodyFontName
+        ),
+        bodyCell(
+          [
+            new Paragraph({
+              children: item.link
+                ? [
+                    new ExternalHyperlink({
+                      link: item.link,
+                      children: [
+                        new TextRun({
+                          text: item.link,
+                          color: "1B5E44",
+                          underline: {},
+                          size: 18,
+                          font: bodyFontName
+                        })
+                      ]
+                    })
+                  ]
+                : [new TextRun({ text: "—", color: MUTED, size: 18, font: bodyFontName })]
+            })
+          ],
+          bodyFontName
+        )
+      ]
+    });
+  });
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 4, color: GOLD },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: GOLD },
+      left: { style: BorderStyle.SINGLE, size: 4, color: GOLD },
+      right: { style: BorderStyle.SINGLE, size: 4, color: GOLD },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: "CFE3D8" },
+      insideVertical: { style: BorderStyle.SINGLE, size: 2, color: "CFE3D8" }
+    },
+    rows: [headerRow, ...bodyRows]
+  });
+}
+
+function headerCell(text: string, bodyFontName: string, widthPct: number): TableCell {
+  return new TableCell({
+    width: { size: widthPct, type: WidthType.PERCENTAGE },
+    shading: { fill: NAVY },
+    verticalAlign: VerticalAlign.CENTER,
+    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+    children: [
+      new Paragraph({
+        children: [new TextRun({ text, bold: true, color: "FFFFFF", size: 19, font: bodyFontName })]
+      })
+    ]
+  });
+}
+
+function bodyCell(children: Paragraph[], bodyFontName: string): TableCell {
+  return new TableCell({
+    verticalAlign: VerticalAlign.TOP,
+    margins: { top: 90, bottom: 90, left: 100, right: 100 },
+    children
+  });
 }
 
 function sectionHeading(text: string, font: string): Paragraph {

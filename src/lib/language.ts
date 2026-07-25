@@ -37,9 +37,13 @@ export interface UiStrings {
   progressGathering: string;
   progressFormatting: string;
   progressDone: string;
-  whatWeFound: string;
+  keywordSummary: string;
   latestNews: string;
   researchedVia: string;
+  serialLabel: string;
+  newsTitleLabel: string;
+  briefDescriptionLabel: string;
+  fullNewsLinkLabel: string;
   downloadPdf: string;
   downloadDocx: string;
   history: string;
@@ -77,9 +81,13 @@ export const UI_STRINGS: Record<Language, UiStrings> = {
     progressGathering: "Gathering news…",
     progressFormatting: "Formatting your report…",
     progressDone: "Report ready",
-    whatWeFound: "What We Found",
+    keywordSummary: "Keyword Summary",
     latestNews: "Latest News",
     researchedVia: "Researched via",
+    serialLabel: "Serial",
+    newsTitleLabel: "News Title",
+    briefDescriptionLabel: "Brief Description",
+    fullNewsLinkLabel: "Full News Link",
     downloadPdf: "Download as PDF",
     downloadDocx: "Download as Word (.docx)",
     history: "Search History",
@@ -115,9 +123,13 @@ export const UI_STRINGS: Record<Language, UiStrings> = {
     progressGathering: "সংবাদ সংগ্রহ করা হচ্ছে…",
     progressFormatting: "রিপোর্ট প্রস্তুত করা হচ্ছে…",
     progressDone: "রিপোর্ট প্রস্তুত",
-    whatWeFound: "যা জানা গেল",
+    keywordSummary: "কীওয়ার্ড সারাংশ",
     latestNews: "সাম্প্রতিক সংবাদ",
     researchedVia: "গবেষণার মাধ্যম",
+    serialLabel: "ক্রমিক",
+    newsTitleLabel: "সংবাদ শিরোনাম",
+    briefDescriptionLabel: "সংক্ষিপ্ত বিবরণ",
+    fullNewsLinkLabel: "সম্পূর্ণ সংবাদ লিংক",
     downloadPdf: "পিডিএফ ডাউনলোড করুন",
     downloadDocx: "ওয়ার্ড (.docx) ডাউনলোড করুন",
     history: "অনুসন্ধানের ইতিহাস",

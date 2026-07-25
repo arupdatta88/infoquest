@@ -54,21 +54,21 @@ export default function ResultsPreview({ result }: { result: ResearchResult }) {
     <div className="animate-fade-in-up mx-auto w-full max-w-3xl">
       {/* Cover strip */}
       <div className="paper-card rounded-2xl border border-navy/10 shadow-card overflow-hidden">
-        <div className="bg-navy px-6 py-5 flex items-center justify-between flex-wrap gap-3">
+        <div className="glossy bg-navy px-6 py-5 flex items-center justify-between flex-wrap gap-3">
           <div>
             <div className={`text-parchment/60 text-xs uppercase tracking-wider ${bnClass}`}>{dateStr}</div>
             <h1 className={`text-parchment text-xl md:text-2xl font-display font-semibold mt-1 ${bnClass}`}>
               {result.keyword}
             </h1>
           </div>
-          <span className="rounded-full border border-gold/60 bg-navy-light/60 px-3 py-1 text-xs font-medium text-gold whitespace-nowrap">
+          <span className="glossy rounded-full border border-gold/60 bg-navy-light/60 px-3 py-1 text-xs font-medium text-gold whitespace-nowrap">
             {t.researchedVia}: {result.engineLabel}
           </span>
         </div>
 
         {/* Section 1 */}
         <section className="px-6 md:px-8 py-7 border-b border-navy/10">
-          <SectionHeading title={t.whatWeFound} bnClass={bnClass} />
+          <SectionHeading title={t.keywordSummary} bnClass={bnClass} />
           <div className={`mt-4 space-y-4 text-charcoal dark:text-parchment/90 leading-relaxed text-[15px] ${bnClass}`}>
             {result.information
               .split(/\n\s*\n/)
@@ -124,20 +124,20 @@ export default function ResultsPreview({ result }: { result: ResearchResult }) {
         <button
           onClick={() => download("pdf")}
           disabled={downloading !== null}
-          className="rounded-xl bg-navy px-5 py-2.5 text-sm font-semibold text-parchment hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50"
+          className="glossy rounded-xl bg-navy px-5 py-2.5 text-sm font-semibold text-parchment hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50"
         >
           {downloading === "pdf" ? "…" : t.downloadPdf}
         </button>
         <button
           onClick={() => download("docx")}
           disabled={downloading !== null}
-          className="rounded-xl border border-navy/30 bg-white/70 dark:bg-navy-dark/50 px-5 py-2.5 text-sm font-semibold text-navy dark:text-parchment hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50"
+          className="glossy rounded-xl border border-navy/30 bg-white/70 dark:bg-navy-dark/50 px-5 py-2.5 text-sm font-semibold text-navy dark:text-parchment hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50"
         >
           {downloading === "docx" ? "…" : t.downloadDocx}
         </button>
         <button
           onClick={copyShareLink}
-          className="rounded-xl border border-gold/50 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 transition-colors"
+          className="glossy rounded-xl border border-gold/50 bg-gold/5 px-5 py-2.5 text-sm font-semibold text-gold hover:bg-gold/10 transition-colors"
         >
           {copied ? t.linkCopied : t.shareLink}
         </button>

@@ -6,11 +6,13 @@ import path from "path";
 import { ResearchResult } from "./types";
 import { UI_STRINGS, UiStrings } from "./language";
 
-const NAVY = rgb(0x1b / 255, 0x2a / 255, 0x4a / 255);
-const GOLD = rgb(0xd9 / 255, 0xa4 / 255, 0x41 / 255);
-const CHARCOAL = rgb(0x2b / 255, 0x2b / 255, 0x2b / 255);
-const PARCHMENT = rgb(0xfa / 255, 0xf7 / 255, 0xf2 / 255);
-const MUTED = rgb(0x6b / 255, 0x6f / 255, 0x7a / 255);
+const NAVY = rgb(0x06 / 255, 0x3d / 255, 0x2e / 255);
+const GOLD = rgb(0x22 / 255, 0xa1 / 255, 0x74 / 255);
+const CHARCOAL = rgb(0x20 / 255, 0x2e / 255, 0x28 / 255);
+const PARCHMENT = rgb(0xf1 / 255, 0xfa / 255, 0xf5 / 255);
+const MUTED = rgb(0x5f / 255, 0x76 / 255, 0x6c / 255);
+const LINK_COLOR = rgb(0x0e / 255, 0x6b / 255, 0x5c / 255);
+const SOFT_MINT = rgb(0xe8 / 255, 0xf5 / 255, 0xee / 255);
 
 const PAGE_W = 595.28; // A4
 const PAGE_H = 841.89;
@@ -151,7 +153,7 @@ function drawCoverPage(ctx: PdfCtx, result: ResearchResult, t: UiStrings) {
 
 function drawInformationSection(ctx: PdfCtx, result: ResearchResult, t: UiStrings) {
   let { page, y } = newContentPage(ctx);
-  y = drawSectionHeading(page, ctx, t.whatWeFound, y);
+  y = drawSectionHeading(page, ctx, t.keywordSummary, y);
 
   const paragraphs = result.information.split(/\n\s*\n/).filter((p) => p.trim());
   for (const para of paragraphs) {
@@ -167,6 +169,60 @@ function drawInformationSection(ctx: PdfCtx, result: ResearchResult, t: UiString
   }
 }
 
+interface TableColumn {
+  key: "serial" | "title" | "description" | "link";
+  label: string;
+  x: number;
+  width: number;
+}
+
+const CELL_PAD = 6;
+const HEADER_ROW_H = 24;
+const TABLE_LINE_H = 11.5;
+
+function buildTableColumns(t: UiStrings): TableColumn[] {
+  const totalWidth = PAGE_W - MARGIN * 2;
+  const serialW = 30;
+  const titleW = 118;
+  const descW = 195;
+  const linkW = totalWidth - serialW - titleW - descW;
+
+  let x = MARGIN;
+  const defs: Array<[TableColumn["key"], string, number]> = [
+    ["serial", t.serialLabel, serialW],
+    ["title", t.newsTitleLabel, titleW],
+    ["description", t.briefDescriptionLabel, descW],
+    ["link", t.fullNewsLinkLabel, linkW]
+  ];
+  return defs.map(([key, label, width]) => {
+    const col = { key, label, x, width };
+    x += width;
+    return col;
+  });
+}
+
+function drawTableHeaderRow(page: PDFPage, ctx: PdfCtx, cols: TableColumn[], y: number): number {
+  const totalWidth = cols.reduce((s, c) => s + c.width, 0);
+  page.drawRectangle({ x: MARGIN, y: y - HEADER_ROW_H, width: totalWidth, height: HEADER_ROW_H, color: NAVY });
+  for (const col of cols) {
+    page.drawText(col.label, {
+      x: col.x + CELL_PAD,
+      y: y - HEADER_ROW_H + 8,
+      size: 10,
+      font: ctx.boldFont,
+      color: rgb(1, 1, 1)
+    });
+  }
+  return y - HEADER_ROW_H;
+}
+
+interface CellLine {
+  text: string;
+  font: PDFFont;
+  size: number;
+  color: ReturnType<typeof rgb>;
+}
+
 function drawNewsSection(ctx: PdfCtx, result: ResearchResult, t: UiStrings) {
   let { page, y } = newContentPage(ctx);
   y = drawSectionHeading(page, ctx, t.latestNews, y);
@@ -176,52 +232,72 @@ function drawNewsSection(ctx: PdfCtx, result: ResearchResult, t: UiStrings) {
     return;
   }
 
+  const cols = buildTableColumns(t);
+  const totalWidth = cols.reduce((s, c) => s + c.width, 0);
+  y = drawTableHeaderRow(page, ctx, cols, y);
+
   result.newsItems.forEach((item, idx) => {
-    if (y < MARGIN + 90) {
+    const dateStr = formatDate(item.date, result.language);
+    const meta = [item.source, dateStr].filter(Boolean).join("  •  ");
+
+    const serialLines: CellLine[] = [{ text: String(idx + 1), font: ctx.bodyFont, size: 9.5, color: CHARCOAL }];
+
+    const titleLines: CellLine[] = wrapText(item.title || "(untitled)", ctx.boldFont, 9.5, cols[1].width - CELL_PAD * 2).map(
+      (line) => ({ text: line, font: ctx.boldFont, size: 9.5, color: NAVY })
+    );
+    const metaLines: CellLine[] = meta
+      ? wrapText(meta, ctx.bodyFont, 8, cols[1].width - CELL_PAD * 2).map((line) => ({
+          text: line,
+          font: ctx.bodyFont,
+          size: 8,
+          color: GOLD
+        }))
+      : [];
+
+    const descLines: CellLine[] = wrapText(item.summary || "—", ctx.bodyFont, 9, cols[2].width - CELL_PAD * 2).map(
+      (line) => ({ text: line, font: ctx.bodyFont, size: 9, color: CHARCOAL })
+    );
+
+    const linkLines: CellLine[] = wrapText(item.link || "—", ctx.bodyFont, 8, cols[3].width - CELL_PAD * 2).map(
+      (line) => ({ text: line, font: ctx.bodyFont, size: 8, color: item.link ? LINK_COLOR : MUTED })
+    );
+
+    const colLineSets: CellLine[][] = [serialLines, [...titleLines, ...metaLines], descLines, linkLines];
+    const rowHeight = Math.max(...colLineSets.map((lines) => lines.length * TABLE_LINE_H)) + CELL_PAD * 2;
+
+    if (y - rowHeight < MARGIN + 30) {
       ({ page, y } = newContentPage(ctx));
+      y = drawTableHeaderRow(page, ctx, cols, y);
     }
 
-    const num = `${idx + 1}.`;
-    const titleLines = wrapText(item.title || "(untitled)", ctx.boldFont, 12.5, PAGE_W - MARGIN * 2 - 24);
-    page.drawText(num, { x: MARGIN, y, size: 12.5, font: ctx.boldFont, color: NAVY });
-    titleLines.forEach((line, i) => {
-      if (i > 0 && y < MARGIN + 60) ({ page, y } = newContentPage(ctx));
-      page.drawText(line, { x: MARGIN + 22, y, size: 12.5, font: ctx.boldFont, color: NAVY });
-      y -= 16;
+    if (idx % 2 === 1) {
+      page.drawRectangle({ x: MARGIN, y: y - rowHeight, width: totalWidth, height: rowHeight, color: SOFT_MINT });
+    }
+
+    colLineSets.forEach((lines, colIdx) => {
+      const col = cols[colIdx];
+      let lineY = y - CELL_PAD - 8;
+      for (const line of lines) {
+        page.drawText(line.text, { x: col.x + CELL_PAD, y: lineY, size: line.size, font: line.font, color: line.color });
+        lineY -= TABLE_LINE_H;
+      }
     });
 
-    const meta = [item.source, formatDate(item.date, result.language)].filter(Boolean).join("  •  ");
-    if (meta) {
-      page.drawText(meta, { x: MARGIN + 22, y, size: 9.5, font: ctx.bodyFont, color: GOLD });
-      y -= 15;
-    }
-
-    if (item.summary) {
-      const summaryLines = wrapText(item.summary, ctx.bodyFont, 10.5, PAGE_W - MARGIN * 2 - 22);
-      for (const line of summaryLines) {
-        if (y < MARGIN + 40) ({ page, y } = newContentPage(ctx));
-        page.drawText(line, { x: MARGIN + 22, y, size: 10.5, font: ctx.bodyFont, color: CHARCOAL });
-        y -= 14.5;
-      }
-    }
-
-    if (item.link) {
-      const linkLines = wrapText(item.link, ctx.bodyFont, 9.5, PAGE_W - MARGIN * 2 - 22);
-      for (const line of linkLines) {
-        if (y < MARGIN + 40) ({ page, y } = newContentPage(ctx));
-        page.drawText(line, { x: MARGIN + 22, y, size: 9.5, font: ctx.bodyFont, color: rgb(0.2, 0.35, 0.6) });
-        y -= 13;
-      }
-    }
-
-    y -= 14;
+    // Row grid lines
     page.drawLine({
-      start: { x: MARGIN, y: y + 6 },
-      end: { x: PAGE_W - MARGIN, y: y + 6 },
-      thickness: 0.5,
-      color: rgb(0.85, 0.82, 0.75)
+      start: { x: MARGIN, y: y - rowHeight },
+      end: { x: MARGIN + totalWidth, y: y - rowHeight },
+      thickness: 0.75,
+      color: GOLD
     });
-    y -= 10;
+    let vx = MARGIN;
+    for (const col of cols) {
+      page.drawLine({ start: { x: vx, y }, end: { x: vx, y: y - rowHeight }, thickness: 0.5, color: SOFT_MINT });
+      vx += col.width;
+    }
+    page.drawLine({ start: { x: vx, y }, end: { x: vx, y: y - rowHeight }, thickness: 0.5, color: SOFT_MINT });
+
+    y -= rowHeight;
   });
 }
 
