@@ -1,9 +1,9 @@
 # InfoQuest by Arup
 
 A bilingual (Bengali + English) research and news-discovery tool. Type a keyword, pick a
-search engine (live web search or one of four AI providers), and get a beautifully
-formatted, downloadable report split into **"What We Found"** (যা জানা গেল) and
-**"Latest News"** (সাম্প্রতিক সংবাদ).
+search engine (live web search or AI search powered by free models via OpenRouter), and
+get a beautifully formatted, downloadable report split into **"What We Found"**
+(যা জানা গেল) and **"Latest News"** (সাম্প্রতিক সংবাদ).
 
 Built with Next.js 14 (App Router) + TypeScript + Tailwind CSS. Ready to deploy on Vercel.
 
@@ -14,9 +14,11 @@ Built with Next.js 14 (App Router) + TypeScript + Tailwind CSS. Ready to deploy 
 - **Auto language detection** — no toggle. Bengali is detected via the Unicode Bengali
   block (U+0980–U+09FF); the whole UI, search results, and reports switch language
   accordingly.
-- **Search Engine dropdown** — Web Search (default) or AI: Gemini / Claude / Grok / Z.ai.
-  Any engine without a configured API key is shown disabled with an
-  "API key not configured" tooltip.
+- **Search Engine dropdown** — Web Search (default) or AI Search (OpenRouter). AI Search
+  comes with a second dropdown listing every currently-free model available on
+  OpenRouter (fetched live from their API, cached 30 minutes), so it never goes stale as
+  their free lineup changes. Any engine without a configured API key is shown disabled
+  with an "API key not configured" tooltip.
 - **Combine Web + AI** — when an AI engine is selected, optionally merge in live web
   results, de-duplicated by link.
 - **Downloadable reports** — PDF (default) or Word (.docx), each with a cover page,
@@ -40,21 +42,22 @@ Built with Next.js 14 (App Router) + TypeScript + Tailwind CSS. Ready to deploy 
 ```
 src/
   app/
-    page.tsx                  # main UI (search, engine picker, results, history)
+    page.tsx                  # main UI (search, engine + model picker, results, history)
     layout.tsx, globals.css
     api/
-      search/route.ts         # orchestrates web + AI providers
+      search/route.ts         # orchestrates web search + OpenRouter AI provider
+      models/route.ts         # live list of free OpenRouter models (cached 30 min)
       providers/status/route.ts
       report/pdf/route.ts     # PDF generation endpoint
       report/docx/route.ts    # DOCX generation endpoint
-  components/                 # SearchBar, EngineDropdown, ResultsPreview, etc.
+  components/                 # SearchBar, EngineDropdown, ModelDropdown, ResultsPreview, etc.
   lib/
     language.ts                # language detection + all UI strings (en/bn)
     types.ts                   # shared ResearchResult / NewsItem / provider types
     pdf.ts, docx.ts            # report generators
     providers/
       webSearch.ts             # Serper.dev (+ optional NewsAPI merge)
-      gemini.ts, claude.ts, grok.ts, zai.ts   # one file per AI provider
+      openrouter.ts             # single AI provider — calls any free OpenRouter model
       aiShared.ts               # shared prompt + JSON-parsing helpers
 public/
   fonts/SolaimanLipi.ttf
@@ -62,8 +65,10 @@ public/
 
 Every provider (web search or AI) normalizes its response into the same
 `{ information, newsItems[] }` shape (see `src/lib/types.ts`), so the report generators
-and UI never need to know which source produced the content. Add a new AI provider by
-creating one more file in `src/lib/providers/` that implements `AIResearchProvider`.
+and UI never need to know which source produced the content. Because the OpenRouter
+provider takes a `model` parameter, adding or removing a model doesn't require touching
+provider code at all — the dropdown is populated straight from OpenRouter's `/models`
+API at runtime.
 
 ## 3. Local development
 
@@ -88,12 +93,13 @@ disable that option in the dropdown.
 |---|---|---|
 | `SERPER_API_KEY` | Web Search (organic + news) | https://serper.dev |
 | `NEWSAPI_KEY` *(optional)* | Extra news results merged into Web Search | https://newsapi.org |
-| `GEMINI_API_KEY` | AI: Gemini | https://ai.google.dev |
-| `ANTHROPIC_API_KEY` | AI: Claude | https://console.anthropic.com |
-| `GROK_API_KEY` | AI: Grok | https://x.ai/api |
-| `ZAI_API_KEY` | AI: Z.ai | https://z.ai |
+| `OPENROUTER_API_KEY` | AI Search (free models) | https://openrouter.ai/keys |
+| `NEXT_PUBLIC_SITE_URL` *(optional)* | Sent as the `HTTP-Referer` header on OpenRouter requests (used for their public attribution/leaderboard, not required for the app to work) | — |
 
 All keys are read server-side only (in API routes) and are never sent to the browser.
+
+> **Security note:** never commit `.env.local` or paste its contents anywhere public.
+> If a key has ever been shared or exposed, regenerate it from the provider's dashboard.
 
 ## 5. Deploying to Vercel
 
@@ -129,9 +135,11 @@ longer than the default.
   to `"Noto Sans Bengali"` if that's more commonly installed in your audience's environment.
 - **Web Search language**: Serper.dev supports Bengali (`hl=bn`, `gl=bd`); NewsAPI.org does
   not have a Bengali locale, so its results (when merged) are requested in English.
-- **AI provider models**: the model IDs used (`gemini-2.0-flash`, `claude-sonnet-4-6`,
-  `grok-2-latest`, `glm-4.6`) are set in each provider file under `src/lib/providers/` —
-  update them there if a provider changes its model lineup.
+- **AI Search models**: the free-model list shown in the dropdown is fetched live from
+  `GET https://openrouter.ai/api/v1/models` and filtered to entries with `$0` pricing and
+  an `:free` id suffix (see `src/app/api/models/route.ts`). There's no hardcoded model
+  list to maintain — if OpenRouter adds or retires a free model, the dropdown picks it up
+  automatically (subject to the 30-minute cache).
 - Puppeteer/headless-Chrome was intentionally avoided for PDF generation (heavier and
   more fragile on serverless) in favor of `pdf-lib`, which draws text directly and embeds
   fonts natively — faster cold starts on Vercel's serverless functions.

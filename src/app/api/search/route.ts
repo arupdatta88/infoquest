@@ -2,20 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { detectLanguage } from "@/lib/language";
 import { isEngineConfigured, ENGINE_META } from "@/lib/providers";
 import { webSearchResearch, dedupeByLink } from "@/lib/providers/webSearch";
-import { geminiProvider } from "@/lib/providers/gemini";
-import { claudeProvider } from "@/lib/providers/claude";
-import { grokProvider } from "@/lib/providers/grok";
-import { zaiProvider } from "@/lib/providers/zai";
-import { AIResearchProvider, EngineId, NewsItem, ResearchResult, SearchRequestBody } from "@/lib/types";
+import { openrouterProvider } from "@/lib/providers/openrouter";
+import { NewsItem, ResearchResult, SearchRequestBody } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-const AI_PROVIDERS: Record<Exclude<EngineId, "web">, AIResearchProvider> = {
-  gemini: geminiProvider,
-  claude: claudeProvider,
-  grok: grokProvider,
-  zai: zaiProvider
-};
 
 export async function POST(req: NextRequest) {
   let body: SearchRequestBody;
@@ -51,8 +41,7 @@ export async function POST(req: NextRequest) {
       information = result.information;
       newsItems = result.newsItems;
     } else {
-      const provider = AI_PROVIDERS[engine];
-      const aiResult = await provider.research({ keyword, language, length });
+      const aiResult = await openrouterProvider.research({ keyword, language, length, model: body.model });
       information = aiResult.information;
       newsItems = aiResult.newsItems;
 
@@ -69,14 +58,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const engineLabel =
+      engine === "ai" && body.model
+        ? `${ENGINE_META[engine].label} · ${body.model}`
+        : ENGINE_META[engine].label;
+
     const result: ResearchResult = {
       keyword,
       language,
       engine,
-      engineLabel: combine ? `${ENGINE_META[engine].label} + Web Search` : ENGINE_META[engine].label,
+      engineLabel: combine ? `${engineLabel} + Web Search` : engineLabel,
       information,
       newsItems,
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
+      ...(engine === "ai" ? { model: body.model } : {})
     };
 
     return NextResponse.json(result);

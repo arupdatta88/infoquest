@@ -39,6 +39,8 @@ export default function ResultsPreview({ result }: { result: ResearchResult }) {
     const url = new URL(window.location.href);
     url.searchParams.set("q", result.keyword);
     url.searchParams.set("engine", result.engine);
+    if (result.model) url.searchParams.set("model", result.model);
+    else url.searchParams.delete("model");
     await navigator.clipboard.writeText(url.toString());
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);

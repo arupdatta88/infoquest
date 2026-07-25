@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
 import SearchBar from "@/components/SearchBar";
 import EngineDropdown from "@/components/EngineDropdown";
+import ModelDropdown from "@/components/ModelDropdown";
 import ProgressIndicator from "@/components/ProgressIndicator";
 import ResultsPreview from "@/components/ResultsPreview";
 import HistoryPanel from "@/components/HistoryPanel";
 import { detectLanguage, UI_STRINGS } from "@/lib/language";
 import { loadHistory, saveToHistory, clearHistory } from "@/lib/history";
-import { EngineId, EngineOption, ResearchResult } from "@/lib/types";
+import { EngineId, EngineOption, OpenRouterModel, ResearchResult } from "@/lib/types";
 
 type Stage = "idle" | "searching" | "gathering" | "formatting" | "done" | "error";
 
@@ -17,6 +18,8 @@ export default function HomePage() {
   const [keyword, setKeyword] = useState("");
   const [engines, setEngines] = useState<EngineOption[]>([]);
   const [engine, setEngine] = useState<EngineId>("web");
+  const [models, setModels] = useState<OpenRouterModel[]>([]);
+  const [model, setModel] = useState<string>("");
   const [combine, setCombine] = useState(false);
   const [length, setLength] = useState<"brief" | "detailed">("brief");
   const [dateRange, setDateRange] = useState<"any" | "24h" | "week" | "month" | "year">("any");
@@ -34,13 +37,25 @@ export default function HomePage() {
       .then((r) => r.json())
       .then((d) => setEngines(d.engines ?? []))
       .catch(() => setEngines([]));
+
+    fetch("/api/models")
+      .then((r) => r.json())
+      .then((d) => {
+        const list: OpenRouterModel[] = d.models ?? [];
+        setModels(list);
+        setModel((prev) => prev || list[0]?.id || "");
+      })
+      .catch(() => setModels([]));
+
     setHistory(loadHistory());
 
     const params = new URLSearchParams(window.location.search);
     const q = params.get("q");
     const e = params.get("engine") as EngineId | null;
+    const m = params.get("model");
     if (q) setKeyword(q);
     if (e) setEngine(e);
+    if (m) setModel(m);
   }, []);
 
   useEffect(() => {
@@ -60,7 +75,14 @@ export default function HomePage() {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword: keyword.trim(), engine, combineWebAndAI: combine, length, dateRange })
+        body: JSON.stringify({
+          keyword: keyword.trim(),
+          engine,
+          model: engine === "ai" ? model : undefined,
+          combineWebAndAI: combine,
+          length,
+          dateRange
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Search failed.");
@@ -121,6 +143,17 @@ export default function HomePage() {
             label={t.engineLabel}
             apiKeyMissingLabel={t.apiKeyMissing}
           />
+
+          {engine === "ai" && (
+            <ModelDropdown
+              models={models}
+              value={model}
+              onChange={setModel}
+              label={t.modelLabel}
+              loadingLabel={t.modelLoading}
+              emptyLabel={t.modelUnavailable}
+            />
+          )}
 
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-navy/70 dark:text-parchment/70">{t.lengthLabel}</span>
@@ -192,6 +225,7 @@ export default function HomePage() {
             onSelect={(item) => {
               setKeyword(item.keyword);
               setEngine(item.engine);
+              if (item.model) setModel(item.model);
               setResult(item);
               setStage("done");
             }}

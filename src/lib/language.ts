@@ -23,6 +23,9 @@ export interface UiStrings {
   searchPlaceholder: string;
   searchButton: string;
   engineLabel: string;
+  modelLabel: string;
+  modelLoading: string;
+  modelUnavailable: string;
   combineLabel: string;
   lengthLabel: string;
   brief: string;
@@ -67,6 +70,9 @@ export const UI_STRINGS: Record<Language, UiStrings> = {
     searchPlaceholder: "Search a topic in Bengali or English…",
     searchButton: "Research",
     engineLabel: "Search Engine",
+    modelLabel: "AI Model (free, via OpenRouter)",
+    modelLoading: "Loading free models…",
+    modelUnavailable: "No free models available",
     combineLabel: "Combine Web + AI",
     lengthLabel: "Report length",
     brief: "Brief",
@@ -109,6 +115,9 @@ export const UI_STRINGS: Record<Language, UiStrings> = {
     searchPlaceholder: "বাংলা বা ইংরেজিতে একটি বিষয় লিখুন…",
     searchButton: "অনুসন্ধান করুন",
     engineLabel: "সার্চ ইঞ্জিন",
+    modelLabel: "এআই মডেল (ফ্রি, ওপেনরাউটার এর মাধ্যমে)",
+    modelLoading: "ফ্রি মডেল লোড হচ্ছে…",
+    modelUnavailable: "কোনো ফ্রি মডেল পাওয়া যায়নি",
     combineLabel: "ওয়েব + এআই একত্রিত করুন",
     lengthLabel: "রিপোর্টের দৈর্ঘ্য",
     brief: "সংক্ষিপ্ত",

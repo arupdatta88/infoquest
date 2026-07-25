@@ -1,6 +1,6 @@
 export type Language = "bn" | "en";
 
-export type EngineId = "web" | "gemini" | "claude" | "grok" | "zai";
+export type EngineId = "web" | "ai";
 
 export interface EngineOption {
   id: EngineId;
@@ -8,6 +8,13 @@ export interface EngineOption {
   kind: "web" | "ai";
   envKey: string;
   configured: boolean;
+}
+
+/** A single free model available through OpenRouter. */
+export interface OpenRouterModel {
+  id: string; // e.g. "meta-llama/llama-3.3-70b-instruct:free"
+  name: string; // human-readable name
+  contextLength: number;
 }
 
 export interface NewsItem {
@@ -26,11 +33,13 @@ export interface ResearchResult {
   information: string; // markdown-ish plain text, paragraphs separated by \n\n
   newsItems: NewsItem[];
   generatedAt: string; // ISO timestamp
+  model?: string; // OpenRouter model id used, when engine === "ai"
 }
 
 export interface SearchRequestBody {
   keyword: string;
   engine: EngineId;
+  model?: string; // OpenRouter model id, only used when engine === "ai"
   combineWebAndAI: boolean;
   length: "brief" | "detailed";
   dateRange?: "any" | "24h" | "week" | "month" | "year";
@@ -44,5 +53,6 @@ export interface AIResearchProvider {
     keyword: string;
     language: Language;
     length: "brief" | "detailed";
+    model?: string;
   }): Promise<{ information: string; newsItems: NewsItem[] }>;
 }
