@@ -11,7 +11,7 @@ Built with Next.js 14 (App Router) + TypeScript + Tailwind CSS. Ready to deploy 
 
 ## 1. Features
 
-- **Auto language detection** — no toggle. Bengali is detected via the Unicode Bengali
+- **Auto language detection** — no toggle. Bengali is detected via the Unicode Bangla
   block (U+0980–U+09FF); the whole UI, search results, and reports switch language
   accordingly.
 - **Search Engine dropdown** — Web Search (default) or AI Search (OpenRouter). AI Search
